@@ -88,6 +88,37 @@ class PositionUpdate(BaseModel):
     y: float
 
 
+class NodePosition(BaseModel):
+    id: int
+    x: float
+    y: float
+
+
+class BatchPositionUpdate(BaseModel):
+    positions: list[NodePosition]
+
+
+@app.put("/api/nodes/positions")
+def batch_update_node_positions(batch: BatchPositionUpdate):
+    """Update multiple node positions in one transaction"""
+    conn = get_conn()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        results = []
+        for pos in batch.positions:
+            cur.execute(
+                "UPDATE nodes SET x = %s, y = %s WHERE id = %s RETURNING id, x, y",
+                (pos.x, pos.y, pos.id),
+            )
+            row = cur.fetchone()
+            if row:
+                results.append(dict(row))
+        conn.commit()
+        return results
+    finally:
+        conn.close()
+
+
 @app.put("/api/nodes/{node_id}/position")
 def update_node_position(node_id: int, pos: PositionUpdate):
     """Update a node's x/y position (triggers NOTIFY via DB trigger)"""

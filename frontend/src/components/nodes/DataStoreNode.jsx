@@ -1,10 +1,19 @@
 import React from 'react'
 import { Handle, Position } from '@xyflow/react'
 
+const hs = { opacity: 0 }
+
 export default function DataStoreNode({ data }) {
   return (
     <div style={{ position: 'relative', minWidth: 160 }}>
-      <Handle type="target" position={Position.Left} style={{ top: '50%' }} />
+      <Handle type="target" position={Position.Top} id="top" style={hs} />
+      <Handle type="source" position={Position.Top} id="top" style={hs} />
+      <Handle type="target" position={Position.Right} id="right" style={hs} />
+      <Handle type="source" position={Position.Right} id="right" style={hs} />
+      <Handle type="target" position={Position.Bottom} id="bottom" style={hs} />
+      <Handle type="source" position={Position.Bottom} id="bottom" style={hs} />
+      <Handle type="target" position={Position.Left} id="left" style={hs} />
+      <Handle type="source" position={Position.Left} id="left" style={hs} />
       <svg width="100%" height={44}>
         <line x1={0} y1={0} x2="100%" y2={0} stroke="#00d4ff" strokeWidth={2} />
         <line x1={0} y1={42} x2="100%" y2={42} stroke="#00d4ff" strokeWidth={2} />
@@ -20,7 +29,6 @@ export default function DataStoreNode({ data }) {
           {data.label}
         </text>
       </svg>
-      <Handle type="source" position={Position.Right} style={{ top: '50%' }} />
     </div>
   )
 }

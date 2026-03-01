@@ -1,6 +1,8 @@
 import React from 'react'
 import { Handle, Position } from '@xyflow/react'
 
+const hs = { opacity: 0 }
+
 export default function ExternalEntityNode({ data }) {
   return (
     <div
@@ -15,9 +17,15 @@ export default function ExternalEntityNode({ data }) {
         minWidth: 100,
       }}
     >
-      <Handle type="target" position={Position.Left} />
+      <Handle type="target" position={Position.Top} id="top" style={hs} />
+      <Handle type="source" position={Position.Top} id="top" style={hs} />
+      <Handle type="target" position={Position.Right} id="right" style={hs} />
+      <Handle type="source" position={Position.Right} id="right" style={hs} />
+      <Handle type="target" position={Position.Bottom} id="bottom" style={hs} />
+      <Handle type="source" position={Position.Bottom} id="bottom" style={hs} />
+      <Handle type="target" position={Position.Left} id="left" style={hs} />
+      <Handle type="source" position={Position.Left} id="left" style={hs} />
       {data.label}
-      <Handle type="source" position={Position.Right} />
     </div>
   )
 }

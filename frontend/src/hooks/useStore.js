@@ -69,5 +69,13 @@ export default function useStore() {
     })
   }, [])
 
-  return { db, connected, updateNodePosition }
+  const batchUpdateNodePositions = useCallback(async (positions) => {
+    await fetch('/api/nodes/positions', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ positions }),
+    })
+  }, [])
+
+  return { db, connected, updateNodePosition, batchUpdateNodePositions }
 }

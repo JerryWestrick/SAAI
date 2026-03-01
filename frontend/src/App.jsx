@@ -1,5 +1,6 @@
 import React from 'react'
 import useStore from './hooks/useStore'
+import { computeLayout } from './hooks/useAutoLayout'
 import Canvas from './components/Canvas'
 
 const styles = {
@@ -50,6 +51,15 @@ const styles = {
     flex: 1,
     minHeight: 0,
   },
+  button: {
+    background: '#16213e',
+    color: '#00d4ff',
+    border: '1px solid #0f3460',
+    padding: '4px 12px',
+    fontFamily: 'monospace',
+    fontSize: 13,
+    cursor: 'pointer',
+  },
   empty: {
     flex: 1,
     display: 'flex',
@@ -61,7 +71,7 @@ const styles = {
 }
 
 export default function App() {
-  const { db, connected, updateNodePosition } = useStore()
+  const { db, connected, updateNodePosition, batchUpdateNodePositions } = useStore()
   const [diagramId, setDiagramId] = React.useState(null)
 
   const diagrams = db.diagrams || []
@@ -72,6 +82,14 @@ export default function App() {
       setDiagramId(diagrams[0].id)
     }
   }, [diagrams, diagramId])
+
+  const handleRelayout = async () => {
+    const nodes = (db.nodes || []).filter(n => n.diagram_id === diagramId)
+    const flows = (db.data_flows || []).filter(f => f.diagram_id === diagramId)
+    if (nodes.length === 0) return
+    const positions = computeLayout(nodes, flows)
+    await batchUpdateNodePositions(positions)
+  }
 
   return (
     <div style={styles.app}>
@@ -89,6 +107,9 @@ export default function App() {
             </option>
           ))}
         </select>
+        {diagramId && (
+          <button style={styles.button} onClick={handleRelayout}>Re-layout</button>
+        )}
         <span style={{ ...styles.status, ...(connected ? styles.connected : styles.disconnected) }}>
           {connected ? 'Connected' : 'Disconnected'}
         </span>
