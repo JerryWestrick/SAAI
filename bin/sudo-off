@@ -1,0 +1,4 @@
+#!/bin/bash
+sudo rm -f /etc/sudoers.d/jerry-claude
+rm -f /home/jerry/SA/.sudo_enabled
+echo "sudo access disabled for claude"

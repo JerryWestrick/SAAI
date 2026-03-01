@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SAAI - AI-Assisted Structured Analysis</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+        h1 { color: #00d4ff; margin-bottom: 10px; }
+        .status { padding: 5px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; font-size: 12px; }
+        .connected { background: #0a3d0a; color: #4caf50; }
+        .disconnected { background: #3d0a0a; color: #f44336; }
+        h2 { color: #00d4ff; margin: 20px 0 10px; font-size: 16px; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+        th { background: #16213e; color: #00d4ff; text-align: left; padding: 8px 12px; border: 1px solid #0f3460; }
+        td { padding: 8px 12px; border: 1px solid #0f3460; }
+        tr:nth-child(even) { background: #16213e; }
+        tr:nth-child(odd) { background: #1a1a2e; }
+        tr.flash { animation: flash 1s ease-out; }
+        @keyframes flash { 0% { background: #2a4a2a; } 100% { background: inherit; } }
+        .log { background: #0a0a1a; border: 1px solid #0f3460; padding: 10px; max-height: 200px; overflow-y: auto; font-size: 12px; margin-top: 20px; }
+        .log-entry { padding: 2px 0; border-bottom: 1px solid #0f3460; }
+        .log-entry .action { font-weight: bold; }
+        .INSERT { color: #4caf50; }
+        .UPDATE { color: #ff9800; }
+        .DELETE { color: #f44336; }
+    </style>
+</head>
+<body>
+    <h1>SAAI - AI-Assisted Structured Analysis</h1>
+    <div id="status" class="status disconnected">Disconnected</div>
+
+    <div id="tables"></div>
+
+    <h2>Event Log</h2>
+    <div id="log" class="log"></div>
+
+    <script>
+        const db = {};
+        const tablesDiv = document.getElementById('tables');
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+
+        function renderTable(name, rows) {
+            if (!rows || rows.length === 0) return `<h2>${name}</h2><p style="color:#666">No rows</p>`;
+            const cols = Object.keys(rows[0]);
+            return `
+                <h2>${name}</h2>
+                <table>
+                    <tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr>
+                    ${rows.map(row => `<tr>${cols.map(c => `<td>${row[c] ?? ''}</td>`).join('')}</tr>`).join('')}
+                </table>
+            `;
+        }
+
+        function renderAll() {
+            tablesDiv.innerHTML = Object.entries(db)
+                .map(([name, rows]) => renderTable(name, rows))
+                .join('');
+        }
+
+        function addLog(action, table, row) {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="action ${action}">${action}</span> ${table} id=${row.id} ${row.name || ''}`;
+            logDiv.prepend(entry);
+        }
+
+        function applyChange(change) {
+            const { table, action, row } = change;
+            if (!db[table]) db[table] = [];
+
+            if (action === 'INSERT') {
+                db[table].push(row);
+            } else if (action === 'UPDATE') {
+                const idx = db[table].findIndex(r => r.id === row.id);
+                if (idx >= 0) db[table][idx] = row;
+                else db[table].push(row);
+            } else if (action === 'DELETE') {
+                db[table] = db[table].filter(r => r.id !== row.id);
+            }
+
+            addLog(action, table, row);
+            renderAll();
+        }
+
+        function connect() {
+            const ws = new WebSocket(`ws://${location.host}/ws`);
+
+            ws.onopen = () => {
+                statusDiv.textContent = 'Connected';
+                statusDiv.className = 'status connected';
+            };
+
+            ws.onclose = () => {
+                statusDiv.textContent = 'Disconnected - reconnecting...';
+                statusDiv.className = 'status disconnected';
+                setTimeout(connect, 2000);
+            };
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'init') {
+                    Object.assign(db, msg.data);
+                    renderAll();
+                } else if (msg.type === 'change') {
+                    applyChange(msg.data);
+                }
+            };
+        }
+
+        connect();
+    </script>
+</body>
+</html>

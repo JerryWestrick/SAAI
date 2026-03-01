@@ -1,0 +1,4 @@
+#!/bin/bash
+sudo bash -c 'echo "jerry ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/jerry-claude'
+touch /home/jerry/SA/.sudo_enabled
+echo "sudo access enabled for claude"
