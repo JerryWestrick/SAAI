@@ -45,53 +45,217 @@ function dbNodesToFlow(dbNodes) {
   }))
 }
 
-function pickHandle(angleDeg, isProcess) {
+// All node types now have 8 handles: 4 cardinal + 4 corners, ordered clockwise
+const HANDLES = ['right', 'bottom-right', 'bottom', 'bottom-left', 'left', 'top-left', 'top', 'top-right']
+
+function closestHandleIndex(angleDeg) {
   const a = ((angleDeg % 360) + 360) % 360
-  if (isProcess) {
-    if (a < 22.5 || a >= 337.5) return 'right'
-    if (a < 67.5) return 'bottom-right'
-    if (a < 112.5) return 'bottom'
-    if (a < 157.5) return 'bottom-left'
-    if (a < 202.5) return 'left'
-    if (a < 247.5) return 'top-left'
-    if (a < 292.5) return 'top'
-    return 'top-right'
-  }
-  if (a < 45 || a >= 315) return 'right'
-  if (a < 135) return 'bottom'
-  if (a < 225) return 'left'
-  return 'top'
+  return Math.round(a / 45) % 8
 }
 
-function getHandlePair(srcNode, tgtNode) {
-  const ss = NODE_SIZES[srcNode.node_type] || NODE_SIZES.process
-  const ts = NODE_SIZES[tgtNode.node_type] || NODE_SIZES.process
-  const dx = ((tgtNode.x || 0) + ts.width / 2) - ((srcNode.x || 0) + ss.width / 2)
-  const dy = ((tgtNode.y || 0) + ts.height / 2) - ((srcNode.y || 0) + ss.height / 2)
-  const angle = Math.atan2(dy, dx) * 180 / Math.PI
+function pickHandle(angleDeg) {
+  return HANDLES[closestHandleIndex(angleDeg)]
+}
 
-  return {
-    sourceHandle: pickHandle(angle, srcNode.node_type === 'process'),
-    targetHandle: pickHandle(angle + 180, tgtNode.node_type === 'process'),
+function nodeCenter(node) {
+  const s = NODE_SIZES[node.node_type] || NODE_SIZES.process
+  return { x: (node.x || 0) + s.width / 2, y: (node.y || 0) + s.height / 2 }
+}
+
+// Symmetric offsets: odd count includes center (0), even count skips it
+// 1 → [0], 2 → [-1,+1], 3 → [-1,0,+1], 4 → [-2,-1,+1,+2], 5 → [-2,-1,0,+1,+2]
+function symmetricOffsets(count) {
+  if (count <= 1) return [0]
+  const offsets = []
+  if (count % 2 === 1) {
+    for (let i = -(count - 1) / 2; i <= (count - 1) / 2; i++) offsets.push(i)
+  } else {
+    for (let i = -count / 2; i <= count / 2; i++) {
+      if (i !== 0) offsets.push(i)
+    }
   }
+  return offsets
 }
 
 function dbFlowsToEdges(dbFlows, nodeMap) {
-  return (dbFlows || []).map(f => {
-    const src = nodeMap[f.source_id]
-    const tgt = nodeMap[f.target_id]
-    const handles = src && tgt
-      ? getHandlePair(src, tgt)
-      : { sourceHandle: 'right', targetHandle: 'left' }
+  // Group edges by unordered node pair
+  const pairEdges = {}
+  for (const f of (dbFlows || [])) {
+    const key = [f.source_id, f.target_id].sort().join('-')
+    if (!pairEdges[key]) pairEdges[key] = []
+    pairEdges[key].push(f)
+  }
 
+  // === PASS 1: Assign handles using symmetric fan ===
+  // Each edge gets: { flow, nodeAHandle (index), nodeBHandle (index), idA, idB }
+  const assignments = []
+  for (const [key, edges] of Object.entries(pairEdges)) {
+    const [idA, idB] = key.split('-').map(Number)
+    const nodeA = nodeMap[idA]
+    const nodeB = nodeMap[idB]
+    if (!nodeA || !nodeB) continue
+
+    const cA = nodeCenter(nodeA)
+    const cB = nodeCenter(nodeB)
+    const angleAtoB = Math.atan2(cB.y - cA.y, cB.x - cA.x) * 180 / Math.PI
+    const centerIdxA = closestHandleIndex(angleAtoB)
+    const centerIdxB = closestHandleIndex(angleAtoB + 180)
+    const offsets = symmetricOffsets(edges.length)
+
+    edges.forEach((f, i) => {
+      assignments.push({
+        flow: f,
+        idA, idB,
+        handleIdxA: ((centerIdxA + offsets[i]) % 8 + 8) % 8,
+        handleIdxB: ((centerIdxB - offsets[i]) % 8 + 8) % 8,
+        centerIdxA, centerIdxB,
+      })
+    })
+  }
+
+  // === PASS 2: Detect and resolve direction conflicts ===
+  // A conflict: same handle on same node used as both source and target
+  function getDirection(assignment, nodeId) {
+    const { flow, idA, handleIdxA, handleIdxB } = assignment
+    const handleIdx = nodeId === idA ? handleIdxA : handleIdxB
+    const dir = flow.source_id === nodeId ? 'source' : 'target'
+    return { handleIdx, dir }
+  }
+
+  function findConflicts() {
+    // For each node, group assignments by handle index and check for mixed directions
+    const nodeHandleMap = {} // nodeId -> { handleIdx -> Set<'source'|'target'> }
+    for (const a of assignments) {
+      for (const nid of [a.idA, a.idB]) {
+        const { handleIdx, dir } = getDirection(a, nid)
+        if (!nodeHandleMap[nid]) nodeHandleMap[nid] = {}
+        if (!nodeHandleMap[nid][handleIdx]) nodeHandleMap[nid][handleIdx] = new Set()
+        nodeHandleMap[nid][handleIdx].add(dir)
+      }
+    }
+    const conflicts = [] // { nodeId, handleIdx }
+    for (const [nid, handles] of Object.entries(nodeHandleMap)) {
+      for (const [hidx, dirs] of Object.entries(handles)) {
+        if (dirs.has('source') && dirs.has('target')) {
+          conflicts.push({ nodeId: Number(nid), handleIdx: Number(hidx) })
+        }
+      }
+    }
+    return conflicts
+  }
+
+  function resolveConflicts() {
+    for (let iter = 0; iter < 10; iter++) {
+      const conflicts = findConflicts()
+      if (conflicts.length === 0) return
+
+      for (const { nodeId, handleIdx } of conflicts) {
+        // Get all assignments touching this node
+        const nodeAssignments = assignments.filter(a => a.idA === nodeId || a.idB === nodeId)
+
+        // Get the assignments that use this conflicting handle
+        const conflicting = nodeAssignments.filter(a => {
+          const idx = a.idA === nodeId ? a.handleIdxA : a.handleIdxB
+          return idx === handleIdx
+        })
+
+        // Separate by direction
+        const sources = conflicting.filter(a => a.flow.source_id === nodeId)
+        const targets = conflicting.filter(a => a.flow.target_id === nodeId)
+
+        // Keep whichever direction has more flows at this handle; move the minority
+        const toMove = sources.length <= targets.length ? sources : targets
+
+        for (const a of toMove) {
+          const isA = a.idA === nodeId
+          const currentIdx = isA ? a.handleIdxA : a.handleIdxB
+
+          // Option 1: Try swapping with another flow in the same pair group that has compatible direction
+          const pairKey = [a.idA, a.idB].sort().join('-')
+          const pairAssignments = assignments.filter(
+            x => [x.idA, x.idB].sort().join('-') === pairKey && x !== a
+          )
+          let swapped = false
+          for (const candidate of pairAssignments) {
+            const candIdx = isA ? candidate.handleIdxA : candidate.handleIdxB
+            const candDir = candidate.flow.source_id === nodeId ? 'source' : 'target'
+            const myDir = a.flow.source_id === nodeId ? 'source' : 'target'
+            // Can swap if candidate's direction matches what we need at our current handle
+            if (candDir === myDir) continue // same direction, swapping won't help
+            // Check if swapping would resolve: candidate takes our handle (compatible), we take theirs
+            const candHandleUsed = nodeAssignments.filter(x => x !== a && x !== candidate)
+              .some(x => {
+                const idx = x.idA === nodeId ? x.handleIdxA : x.handleIdxB
+                const dir = x.flow.source_id === nodeId ? 'source' : 'target'
+                return idx === candIdx && dir !== myDir
+              })
+            if (!candHandleUsed) {
+              // Swap BOTH ends so the lines don't cross
+              const tmpA = a.handleIdxA; a.handleIdxA = candidate.handleIdxA; candidate.handleIdxA = tmpA
+              const tmpB = a.handleIdxB; a.handleIdxB = candidate.handleIdxB; candidate.handleIdxB = tmpB
+              swapped = true
+              break
+            }
+          }
+          if (swapped) continue
+
+          // Option 2: Check if there's an empty center handle (even-count groups skip center)
+          const pairEdgesForA = assignments.filter(x => [x.idA, x.idB].sort().join('-') === pairKey)
+          const centerIdx = isA ? a.centerIdxA : a.centerIdxB
+          const centerUsed = nodeAssignments.some(x => {
+            const idx = x.idA === nodeId ? x.handleIdxA : x.handleIdxB
+            return idx === centerIdx
+          })
+          if (!centerUsed) {
+            if (isA) a.handleIdxA = centerIdx
+            else a.handleIdxB = centerIdx
+            continue
+          }
+
+          // Option 3: Find nearest unused handle (or handle used in compatible direction)
+          const myDir = a.flow.source_id === nodeId ? 'source' : 'target'
+          for (let offset = 1; offset < 8; offset++) {
+            for (const sign of [1, -1]) {
+              const tryIdx = ((currentIdx + sign * offset) % 8 + 8) % 8
+              const existing = nodeAssignments.filter(x => x !== a).filter(x => {
+                const idx = x.idA === nodeId ? x.handleIdxA : x.handleIdxB
+                return idx === tryIdx
+              })
+              // Check all existing uses of this handle are compatible direction
+              const allCompatible = existing.every(x => {
+                const dir = x.flow.source_id === nodeId ? 'source' : 'target'
+                return dir === myDir
+              })
+              if (allCompatible) {
+                if (isA) a.handleIdxA = tryIdx
+                else a.handleIdxB = tryIdx
+                break
+              }
+            }
+            // Check if we moved
+            const newIdx = isA ? a.handleIdxA : a.handleIdxB
+            if (newIdx !== currentIdx) break
+          }
+        }
+      }
+    }
+  }
+
+  resolveConflicts()
+
+  // === PASS 3: Build result edges ===
+  return assignments.map(a => {
+    const { flow, idA, idB, handleIdxA, handleIdxB } = a
+    const sourceHandle = flow.source_id === idA ? HANDLES[handleIdxA] : HANDLES[handleIdxB]
+    const targetHandle = flow.target_id === idB ? HANDLES[handleIdxB] : HANDLES[handleIdxA]
     return {
-      id: `flow-${f.id}`,
-      source: String(f.source_id),
-      target: String(f.target_id),
-      sourceHandle: handles.sourceHandle,
-      targetHandle: handles.targetHandle,
+      id: `flow-${flow.id}`,
+      source: String(flow.source_id),
+      target: String(flow.target_id),
+      sourceHandle,
+      targetHandle,
       type: 'data_flow',
-      data: { label: f.name, as_of: f.as_of, srcHandle: handles.sourceHandle, tgtHandle: handles.targetHandle },
+      data: { label: flow.name, as_of: flow.as_of, srcHandle: sourceHandle, tgtHandle: targetHandle },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#00d4ff' },
     }
   })

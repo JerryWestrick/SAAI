@@ -44,9 +44,30 @@ export default function ProcessNode({ data }) {
             </text>
           </>
         )}
-        <text x={size} y={data.number ? size * 1.1 : size} textAnchor="middle" dominantBaseline="middle" fill="#e0e0e0" fontSize={14} fontFamily="monospace">
-          {data.label}
-        </text>
+        {(() => {
+          const words = (data.label || '').split(' ')
+          const lines = []
+          let cur = ''
+          for (const w of words) {
+            const test = cur ? cur + ' ' + w : w
+            if (test.length > 12 && cur) {
+              lines.push(cur)
+              cur = w
+            } else {
+              cur = test
+            }
+          }
+          if (cur) lines.push(cur)
+          const lineHeight = 18
+          const baseY = (data.number ? size * 1.1 : size) - ((lines.length - 1) * lineHeight) / 2
+          return (
+            <text x={size} textAnchor="middle" dominantBaseline="middle" fill="#e0e0e0" fontSize={14} fontFamily="monospace">
+              {lines.map((line, i) => (
+                <tspan key={i} x={size} y={baseY + i * lineHeight}>{line}</tspan>
+              ))}
+            </text>
+          )
+        })()}
       </svg>
     </div>
   )

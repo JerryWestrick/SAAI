@@ -1,5 +1,5 @@
 import React from 'react'
-import { BaseEdge, EdgeLabelRenderer, getBezierPath } from '@xyflow/react'
+import { BaseEdge, EdgeLabelRenderer } from '@xyflow/react'
 
 const HANDLE_ANGLES = {
   top:          -Math.PI / 2,
@@ -12,7 +12,12 @@ const HANDLE_ANGLES = {
   'top-left':   -3 * Math.PI / 4,
 }
 
-function customBezier(sx, sy, tx, ty, srcHandle, tgtHandle) {
+function bezierPoint(t, p0, p1, p2, p3) {
+  const u = 1 - t
+  return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3
+}
+
+function computeBezier(sx, sy, tx, ty, srcHandle, tgtHandle, t) {
   const dist = Math.sqrt((tx - sx) ** 2 + (ty - sy) ** 2)
   const offset = Math.max(dist * 0.35, 40)
 
@@ -25,23 +30,17 @@ function customBezier(sx, sy, tx, ty, srcHandle, tgtHandle) {
   const cy2 = ty + Math.sin(ta) * offset
 
   const path = `M ${sx} ${sy} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${tx} ${ty}`
-  const labelX = 0.125 * sx + 0.375 * cx1 + 0.375 * cx2 + 0.125 * tx
-  const labelY = 0.125 * sy + 0.375 * cy1 + 0.375 * cy2 + 0.125 * ty
+  const labelX = bezierPoint(t, sx, cx1, cx2, tx)
+  const labelY = bezierPoint(t, sy, cy1, cy2, ty)
 
   return [path, labelX, labelY]
 }
 
-export default function DataFlowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, markerEnd }) {
-  const hasDiagonal = data?.srcHandle?.includes('-') || data?.tgtHandle?.includes('-')
-
-  let edgePath, labelX, labelY
-  if (hasDiagonal) {
-    [edgePath, labelX, labelY] = customBezier(sourceX, sourceY, targetX, targetY, data.srcHandle, data.tgtHandle)
-  } else {
-    [edgePath, labelX, labelY] = getBezierPath({
-      sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
-    })
-  }
+export default function DataFlowEdge({ id, sourceX, sourceY, targetX, targetY, data, markerEnd }) {
+  const [edgePath, labelX, labelY] = computeBezier(
+    sourceX, sourceY, targetX, targetY,
+    data?.srcHandle, data?.tgtHandle, 0.5
+  )
 
   return (
     <>
@@ -59,6 +58,12 @@ export default function DataFlowEdge({ id, sourceX, sourceY, targetX, targetY, s
             fontFamily: 'monospace',
             color: '#e0e0e0',
             border: '1px solid #0f3460',
+            maxWidth: 120,
+            textAlign: 'center',
+            whiteSpace: 'normal',
+            wordBreak: 'keep-all',
+            lineHeight: '1.3',
+            overflow: 'visible',
           }}
         >
           {data?.label}
