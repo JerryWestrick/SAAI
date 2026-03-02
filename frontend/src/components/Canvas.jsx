@@ -1,10 +1,12 @@
-import React, { useMemo, useCallback } from 'react'
+import React, { useMemo, useCallback, useEffect } from 'react'
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   Controls,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   MarkerType,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -41,7 +43,7 @@ function dbNodesToFlow(dbNodes) {
     id: String(n.id),
     type: NODE_TYPE_MAP[n.node_type] || 'process',
     position: { x: n.x || 0, y: n.y || 0 },
-    data: { label: n.name, number: n.number },
+    data: { label: n.name, number: n.number, child_diagram_id: n.child_diagram_id || null },
   }))
 }
 
@@ -261,7 +263,15 @@ function dbFlowsToEdges(dbFlows, nodeMap) {
   })
 }
 
-export default function Canvas({ db, diagramId, onNodePositionChange }) {
+export default function Canvas(props) {
+  return (
+    <ReactFlowProvider>
+      <CanvasInner {...props} />
+    </ReactFlowProvider>
+  )
+}
+
+function CanvasInner({ db, diagramId, onNodePositionChange, onNavigateDiagram, onShowSpec }) {
   const filteredNodes = useMemo(
     () => (db.nodes || []).filter(n => n.diagram_id === diagramId),
     [db.nodes, diagramId]
@@ -287,9 +297,26 @@ export default function Canvas({ db, diagramId, onNodePositionChange }) {
   React.useEffect(() => { setNodes(flowNodes) }, [flowNodes, setNodes])
   React.useEffect(() => { setEdges(flowEdges) }, [flowEdges, setEdges])
 
+  const { fitView } = useReactFlow()
+  useEffect(() => {
+    // Small delay so nodes are rendered before fitting
+    const t = setTimeout(() => fitView({ padding: 0.1, duration: 300 }), 50)
+    return () => clearTimeout(t)
+  }, [diagramId, fitView])
+
   const onNodeDragStop = useCallback((_event, node) => {
     onNodePositionChange(Number(node.id), node.position.x, node.position.y)
   }, [onNodePositionChange])
+
+  const onNodeDoubleClick = useCallback((_event, node) => {
+    if (node.type !== 'process') return
+    const childDiagramId = node.data?.child_diagram_id
+    if (childDiagramId) {
+      onNavigateDiagram?.(childDiagramId)
+    } else {
+      onShowSpec?.(Number(node.id))
+    }
+  }, [onNavigateDiagram, onShowSpec])
 
   return (
     <div style={{ width: '100%', height: '100%' }}>
@@ -299,6 +326,7 @@ export default function Canvas({ db, diagramId, onNodePositionChange }) {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDragStop={onNodeDragStop}
+        onNodeDoubleClick={onNodeDoubleClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView

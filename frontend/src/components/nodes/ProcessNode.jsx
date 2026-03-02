@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Handle, Position } from '@xyflow/react'
 
 const size = 80
@@ -17,8 +17,14 @@ const handles = [
 ]
 
 export default function ProcessNode({ data }) {
+  const [hovered, setHovered] = useState(false)
+  const stroke = hovered ? '#66e5ff' : '#00d4ff'
   return (
-    <div style={{ position: 'relative', width: size * 2, height: size * 2 }}>
+    <div
+      style={{ position: 'relative', width: size * 2, height: size * 2, filter: hovered ? 'drop-shadow(0 0 8px #00d4ff)' : 'none', cursor: 'pointer' }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       {handles.map(h => (
         <React.Fragment key={h.id}>
           <Handle type="target" position={h.pos} id={h.id}
@@ -33,8 +39,8 @@ export default function ProcessNode({ data }) {
           cy={size}
           r={size - 2}
           fill="#16213e"
-          stroke="#00d4ff"
-          strokeWidth={2}
+          stroke={stroke}
+          strokeWidth={hovered ? 3 : 2}
         />
         {data.number && (
           <>
@@ -68,6 +74,15 @@ export default function ProcessNode({ data }) {
             </text>
           )
         })()}
+        {data.child_diagram_id ? (
+          <text x={size} y={size * 2 - 12} textAnchor="middle" fill={hovered ? '#66e5ff' : '#00d4ff'} fontSize={10} fontFamily="monospace">
+            ▼ drill
+          </text>
+        ) : (
+          <text x={size} y={size * 2 - 12} textAnchor="middle" fill={hovered ? '#66e5ff' : '#0f3460'} fontSize={10} fontFamily="monospace">
+            ▼ spec
+          </text>
+        )}
       </svg>
     </div>
   )

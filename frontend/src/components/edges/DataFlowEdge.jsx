@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { BaseEdge, EdgeLabelRenderer } from '@xyflow/react'
 
 const HANDLE_ANGLES = {
@@ -37,6 +37,7 @@ function computeBezier(sx, sy, tx, ty, srcHandle, tgtHandle, t) {
 }
 
 export default function DataFlowEdge({ id, sourceX, sourceY, targetX, targetY, data, markerEnd }) {
+  const [hovered, setHovered] = useState(false)
   const [edgePath, labelX, labelY] = computeBezier(
     sourceX, sourceY, targetX, targetY,
     data?.srcHandle, data?.tgtHandle, 0.5
@@ -44,27 +45,51 @@ export default function DataFlowEdge({ id, sourceX, sourceY, targetX, targetY, d
 
   return (
     <>
-      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={{ stroke: '#00d4ff', strokeWidth: 1.5 }} />
+      {/* Invisible wider path for easier hover detection */}
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={15}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      />
+      <BaseEdge
+        id={id}
+        path={edgePath}
+        markerEnd={markerEnd}
+        style={{
+          stroke: hovered ? '#66e5ff' : '#00d4ff',
+          strokeWidth: hovered ? 3 : 1.5,
+          filter: hovered ? 'drop-shadow(0 0 4px #00d4ff)' : 'none',
+          transition: 'stroke 0.15s, stroke-width 0.15s',
+          pointerEvents: 'none',
+        }}
+      />
       <EdgeLabelRenderer>
         <div
           style={{
             position: 'absolute',
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
             pointerEvents: 'all',
-            background: '#1a1a2e',
+            background: hovered ? '#1e2a4a' : '#1a1a2e',
             padding: '2px 6px',
             borderRadius: 3,
             fontSize: 11,
             fontFamily: 'monospace',
-            color: '#e0e0e0',
-            border: '1px solid #0f3460',
+            color: hovered ? '#ffffff' : '#e0e0e0',
+            border: `1px solid ${hovered ? '#00d4ff' : '#0f3460'}`,
+            boxShadow: hovered ? '0 0 8px #00d4ff' : 'none',
             maxWidth: 120,
             textAlign: 'center',
             whiteSpace: 'normal',
             wordBreak: 'keep-all',
             lineHeight: '1.3',
             overflow: 'visible',
+            transition: 'background 0.15s, border 0.15s, box-shadow 0.15s',
           }}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
         >
           {data?.label}
           {data?.as_of && (

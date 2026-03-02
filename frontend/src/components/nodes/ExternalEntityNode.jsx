@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Handle, Position } from '@xyflow/react'
 
 const handles = [
@@ -13,18 +13,23 @@ const handles = [
 ]
 
 export default function ExternalEntityNode({ data }) {
+  const [hovered, setHovered] = useState(false)
   return (
     <div
       style={{
         padding: '12px 20px',
-        border: '2px solid #00d4ff',
+        border: `${hovered ? 3 : 2}px solid ${hovered ? '#66e5ff' : '#00d4ff'}`,
         background: '#16213e',
         color: '#e0e0e0',
         fontFamily: 'monospace',
         fontSize: 14,
         textAlign: 'center',
         minWidth: 100,
+        boxShadow: hovered ? '0 0 12px #00d4ff' : 'none',
+        transition: 'box-shadow 0.15s, border 0.15s',
       }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       {handles.map(h => (
         <React.Fragment key={h.id}>

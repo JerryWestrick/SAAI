@@ -2,6 +2,7 @@ import React from 'react'
 import useStore from './hooks/useStore'
 import { computeLayout } from './hooks/useAutoLayout'
 import Canvas from './components/Canvas'
+import MiniSpecModal from './components/MiniSpecModal'
 
 const styles = {
   app: {
@@ -73,6 +74,8 @@ const styles = {
 export default function App() {
   const { db, connected, updateNodePosition, batchUpdateNodePositions } = useStore()
   const [diagramId, setDiagramId] = React.useState(null)
+  const [history, setHistory] = React.useState([]) // breadcrumb stack of diagram IDs
+  const [specNodeId, setSpecNodeId] = React.useState(null) // node ID for mini-spec modal
 
   const diagrams = db.diagrams || []
 
@@ -82,6 +85,20 @@ export default function App() {
       setDiagramId(diagrams[0].id)
     }
   }, [diagrams, diagramId])
+
+  const navigateToDiagram = React.useCallback((targetId) => {
+    setHistory(prev => [...prev, diagramId])
+    setDiagramId(targetId)
+  }, [diagramId])
+
+  const navigateBack = React.useCallback(() => {
+    setHistory(prev => {
+      const next = [...prev]
+      const parentId = next.pop()
+      if (parentId != null) setDiagramId(parentId)
+      return next
+    })
+  }, [])
 
   const handleRelayout = async () => {
     const nodes = (db.nodes || []).filter(n => n.diagram_id === diagramId)
@@ -98,7 +115,7 @@ export default function App() {
         <select
           style={styles.select}
           value={diagramId || ''}
-          onChange={e => setDiagramId(Number(e.target.value))}
+          onChange={e => { setDiagramId(Number(e.target.value)); setHistory([]) }}
         >
           <option value="" disabled>Select diagram...</option>
           {diagrams.map(d => (
@@ -107,6 +124,9 @@ export default function App() {
             </option>
           ))}
         </select>
+        {history.length > 0 && (
+          <button style={styles.button} onClick={navigateBack}>&larr; Back</button>
+        )}
         {diagramId && (
           <button style={styles.button} onClick={handleRelayout}>Re-layout</button>
         )}
@@ -116,13 +136,26 @@ export default function App() {
       </div>
       {diagramId ? (
         <div style={styles.canvas}>
-          <Canvas db={db} diagramId={diagramId} onNodePositionChange={updateNodePosition} />
+          <Canvas db={db} diagramId={diagramId} onNodePositionChange={updateNodePosition} onNavigateDiagram={navigateToDiagram} onShowSpec={setSpecNodeId} />
         </div>
       ) : (
         <div style={styles.empty}>
           {diagrams.length === 0 ? 'No diagrams yet. Use the CLI to create one.' : 'Select a diagram.'}
         </div>
       )}
+      {specNodeId != null && (() => {
+        const node = (db.nodes || []).find(n => n.id === specNodeId)
+        const flows = (db.data_flows || []).filter(f => f.diagram_id === diagramId)
+        const miniSpec = (db.mini_specs || []).find(m => m.node_id === specNodeId)
+        return (
+          <MiniSpecModal
+            node={node}
+            flows={flows}
+            miniSpec={miniSpec}
+            onClose={() => setSpecNodeId(null)}
+          />
+        )
+      })()}
     </div>
   )
 }

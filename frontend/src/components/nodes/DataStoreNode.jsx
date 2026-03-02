@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Handle, Position } from '@xyflow/react'
 
 const handles = [
@@ -13,8 +13,14 @@ const handles = [
 ]
 
 export default function DataStoreNode({ data }) {
+  const [hovered, setHovered] = useState(false)
+  const stroke = hovered ? '#66e5ff' : '#00d4ff'
   return (
-    <div style={{ position: 'relative', minWidth: 160 }}>
+    <div
+      style={{ position: 'relative', minWidth: 160, filter: hovered ? 'drop-shadow(0 0 8px #00d4ff)' : 'none' }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       {handles.map(h => (
         <React.Fragment key={h.id}>
           <Handle type="target" position={h.pos} id={h.id}
@@ -24,8 +30,8 @@ export default function DataStoreNode({ data }) {
         </React.Fragment>
       ))}
       <svg width="100%" height={44}>
-        <line x1={0} y1={0} x2="100%" y2={0} stroke="#00d4ff" strokeWidth={2} />
-        <line x1={0} y1={42} x2="100%" y2={42} stroke="#00d4ff" strokeWidth={2} />
+        <line x1={0} y1={0} x2="100%" y2={0} stroke={stroke} strokeWidth={hovered ? 3 : 2} />
+        <line x1={0} y1={42} x2="100%" y2={42} stroke={stroke} strokeWidth={hovered ? 3 : 2} />
         {data.number && (
           <>
             <line x1={40} y1={0} x2={40} y2={42} stroke="#0f3460" strokeWidth={1} />
