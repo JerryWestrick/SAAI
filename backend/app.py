@@ -17,7 +17,7 @@ app = FastAPI(title="SAAI - AI-Assisted Structured Analysis")
 # Connected WebSocket clients
 clients: set[WebSocket] = set()
 
-TABLES = ["projects", "diagrams", "nodes", "data_flows", "data_dictionary", "mini_specs"]
+TABLES = ["projects", "diagrams", "nodes", "data_flows", "data_dictionary", "mini_specs", "dd_fields", "traits", "flow_traits"]
 
 
 @app.get("/api/tables")
@@ -117,6 +117,23 @@ def batch_update_node_positions(batch: BatchPositionUpdate):
         return results
     finally:
         conn.close()
+
+
+class LabelOffsetUpdate(BaseModel):
+    dx: float
+    dy: float
+
+
+@app.put("/api/flows/{flow_id}/label-offset")
+def update_flow_label_offset(flow_id: int, offset: LabelOffsetUpdate):
+    """Update a flow's label offset (triggers NOTIFY via DB trigger)"""
+    result = execute(
+        "UPDATE data_flows SET label_dx = %s, label_dy = %s WHERE id = %s RETURNING id, label_dx, label_dy",
+        (offset.dx, offset.dy, flow_id),
+    )
+    if not result:
+        return {"error": "Flow not found"}, 404
+    return result
 
 
 @app.put("/api/nodes/{node_id}/position")

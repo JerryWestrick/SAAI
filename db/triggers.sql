@@ -60,3 +60,21 @@ DROP TRIGGER IF EXISTS mini_specs_notify ON mini_specs;
 CREATE TRIGGER mini_specs_notify
     AFTER INSERT OR UPDATE OR DELETE ON mini_specs
     FOR EACH ROW EXECUTE FUNCTION sa_notify();
+
+-- DD fields trigger
+DROP TRIGGER IF EXISTS dd_fields_notify ON dd_fields;
+CREATE TRIGGER dd_fields_notify
+    AFTER INSERT OR UPDATE OR DELETE ON dd_fields
+    FOR EACH ROW EXECUTE FUNCTION sa_notify();
+
+-- Traits trigger
+DROP TRIGGER IF EXISTS traits_notify ON traits;
+CREATE TRIGGER traits_notify
+    AFTER INSERT OR UPDATE OR DELETE ON traits
+    FOR EACH ROW EXECUTE FUNCTION sa_notify();
+
+-- Flow traits trigger
+DROP TRIGGER IF EXISTS flow_traits_notify ON flow_traits;
+CREATE TRIGGER flow_traits_notify
+    AFTER INSERT OR UPDATE OR DELETE ON flow_traits
+    FOR EACH ROW EXECUTE FUNCTION sa_notify();

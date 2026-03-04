@@ -1,4 +1,5 @@
 import React from 'react'
+import { findDDEntry } from '../utils/ddLookup'
 
 const s = {
   overlay: {
@@ -60,6 +61,10 @@ const s = {
     fontSize: 13,
     padding: '2px 0',
     color: '#e0e0e0',
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 4,
   },
   ioAsOf: {
     fontSize: 10,
@@ -93,13 +98,109 @@ const s = {
     fontStyle: 'italic',
     fontSize: 13,
   },
+  ddSection: {
+    padding: '12px 16px',
+    borderTop: '1px solid #0f3460',
+    overflowY: 'auto',
+  },
+  ddEntry: {
+    marginBottom: 12,
+  },
+  ddName: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#00d4ff',
+    marginBottom: 2,
+  },
+  ddDef: {
+    fontSize: 12,
+    color: '#aaa',
+    marginBottom: 6,
+    fontStyle: 'italic',
+  },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: 12,
+  },
+  th: {
+    textAlign: 'left',
+    padding: '4px 8px',
+    borderBottom: '1px solid #0f3460',
+    color: '#00d4ff',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  td: {
+    padding: '3px 8px',
+    borderBottom: '1px solid #0f346033',
+    color: '#e0e0e0',
+  },
 }
 
-export default function MiniSpecModal({ node, flows, miniSpec, onClose }) {
+const badgeColors = {
+  adds:     { bg: '#0a3d0a', border: '#2ecc40', color: '#2ecc40', prefix: '+' },
+  removes:  { bg: '#3d0a0a', border: '#ff4136', color: '#ff4136', prefix: '−' },
+  requires: { bg: '#0a1a3d', border: '#4a9eff', color: '#4a9eff', prefix: '?' },
+}
+
+function TraitBadge({ modifier, traitName }) {
+  const c = badgeColors[modifier]
+  if (!c) return null
+  return (
+    <span style={{
+      display: 'inline-block',
+      fontSize: 10,
+      padding: '1px 5px',
+      borderRadius: 3,
+      background: c.bg,
+      border: `1px solid ${c.border}`,
+      color: c.color,
+      fontFamily: 'monospace',
+      whiteSpace: 'nowrap',
+    }}>
+      {c.prefix}{traitName}
+    </span>
+  )
+}
+
+function FlowTraitBadges({ flowId, flowTraits, traits }) {
+  const fts = flowTraits.filter(ft => ft.flow_id === flowId)
+  if (fts.length === 0) return null
+  return (
+    <>
+      {fts.map(ft => {
+        const trait = traits.find(t => t.id === ft.trait_id)
+        if (!trait) return null
+        return <TraitBadge key={ft.id} modifier={ft.modifier} traitName={trait.name} />
+      })}
+    </>
+  )
+}
+
+export default function MiniSpecModal({ node, flows, miniSpec, flowTraits = [], traits = [], db = {}, onClose }) {
   if (!node) return null
 
   const inputs = (flows || []).filter(f => f.target_id === node.id)
   const outputs = (flows || []).filter(f => f.source_id === node.id)
+
+  // Resolve DD entries for all flows (deduped)
+  const diagram = (db.diagrams || []).find(d => d.id === node.diagram_id)
+  const projectId = diagram?.project_id
+  const allFlows = [...inputs, ...outputs]
+  const seenDdIds = new Set()
+  const ddEntries = []
+  for (const f of allFlows) {
+    const dd = findDDEntry(f.name, db.data_dictionary || [], projectId)
+    if (dd && !seenDdIds.has(dd.id)) {
+      seenDdIds.add(dd.id)
+      const fields = (db.dd_fields || [])
+        .filter(fld => fld.dd_id === dd.id)
+        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+      ddEntries.push({ dd, fields })
+    }
+  }
 
   return (
     <div style={s.overlay} onClick={onClose}>
@@ -117,8 +218,9 @@ export default function MiniSpecModal({ node, flows, miniSpec, onClose }) {
             {inputs.length === 0 && <div style={s.empty}>None</div>}
             {inputs.map(f => (
               <div key={f.id} style={s.ioItem}>
-                &rarr; {f.name}
+                <span>&rarr; {f.name}</span>
                 {f.as_of && <span style={s.ioAsOf}>(as of {f.as_of})</span>}
+                <FlowTraitBadges flowId={f.id} flowTraits={flowTraits} traits={traits} />
               </div>
             ))}
           </div>
@@ -128,8 +230,9 @@ export default function MiniSpecModal({ node, flows, miniSpec, onClose }) {
             {outputs.length === 0 && <div style={s.empty}>None</div>}
             {outputs.map(f => (
               <div key={f.id} style={s.ioItem}>
-                {f.name} &rarr;
+                <span>{f.name} &rarr;</span>
                 {f.as_of && <span style={s.ioAsOf}>(as of {f.as_of})</span>}
+                <FlowTraitBadges flowId={f.id} flowTraits={flowTraits} traits={traits} />
               </div>
             ))}
           </div>
@@ -144,6 +247,41 @@ export default function MiniSpecModal({ node, flows, miniSpec, onClose }) {
             <div style={s.empty}>No mini-spec defined yet.</div>
           )}
         </div>
+
+        {/* Data Structures from DD */}
+        {ddEntries.length > 0 && (
+          <div style={s.ddSection}>
+            <div style={s.specLabel}>Data Structures</div>
+            {ddEntries.map(({ dd, fields }) => (
+              <div key={dd.id} style={s.ddEntry}>
+                <div style={s.ddName}>{dd.name}</div>
+                {dd.definition && <div style={s.ddDef}>{dd.definition}</div>}
+                {fields.length > 0 && (
+                  <table style={s.table}>
+                    <thead>
+                      <tr>
+                        <th style={s.th}>Name</th>
+                        <th style={s.th}>Type</th>
+                        <th style={s.th}>Reference</th>
+                        <th style={s.th}>Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fields.map(f => (
+                        <tr key={f.id}>
+                          <td style={s.td}>{f.name}</td>
+                          <td style={s.td}>{f.field_type || ''}</td>
+                          <td style={s.td}>{f.reference_dd || ''}</td>
+                          <td style={s.td}>{f.description || ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

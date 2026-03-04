@@ -69,6 +69,14 @@ export default function useStore() {
     })
   }, [])
 
+  const updateFlowLabelOffset = useCallback(async (flowId, dx, dy) => {
+    await fetch(`/api/flows/${flowId}/label-offset`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dx, dy }),
+    })
+  }, [])
+
   const batchUpdateNodePositions = useCallback(async (positions) => {
     await fetch('/api/nodes/positions', {
       method: 'PUT',
@@ -77,5 +85,5 @@ export default function useStore() {
     })
   }, [])
 
-  return { db, connected, updateNodePosition, batchUpdateNodePositions }
+  return { db, connected, updateNodePosition, updateFlowLabelOffset, batchUpdateNodePositions }
 }

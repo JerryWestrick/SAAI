@@ -79,7 +79,7 @@ function symmetricOffsets(count) {
   return offsets
 }
 
-function dbFlowsToEdges(dbFlows, nodeMap) {
+function dbFlowsToEdges(dbFlows, nodeMap, flowTraits, traits) {
   // Group edges by unordered node pair
   const pairEdges = {}
   for (const f of (dbFlows || [])) {
@@ -245,11 +245,48 @@ function dbFlowsToEdges(dbFlows, nodeMap) {
 
   resolveConflicts()
 
+  // === PASS 2.5: Override handles for flows with label offset ===
+  // When user has dragged a label, pick handles closest to the label position
+  for (const a of assignments) {
+    const { flow, idA, idB } = a
+    const dx = flow.label_dx || 0
+    const dy = flow.label_dy || 0
+    if (dx === 0 && dy === 0) continue
+
+    const srcNode = nodeMap[flow.source_id]
+    const tgtNode = nodeMap[flow.target_id]
+    if (!srcNode || !tgtNode) continue
+
+    const srcC = nodeCenter(srcNode)
+    const tgtC = nodeCenter(tgtNode)
+    const labelX = (srcC.x + tgtC.x) / 2 + dx
+    const labelY = (srcC.y + tgtC.y) / 2 + dy
+
+    // Pick handle on source closest to label
+    const srcAngle = Math.atan2(labelY - srcC.y, labelX - srcC.x) * 180 / Math.PI
+    const srcIdx = closestHandleIndex(srcAngle)
+    // Pick handle on target closest to label
+    const tgtAngle = Math.atan2(labelY - tgtC.y, labelX - tgtC.x) * 180 / Math.PI
+    const tgtIdx = closestHandleIndex(tgtAngle)
+
+    if (flow.source_id === idA) {
+      a.handleIdxA = srcIdx
+      a.handleIdxB = tgtIdx
+    } else {
+      a.handleIdxA = tgtIdx
+      a.handleIdxB = srcIdx
+    }
+  }
+
   // === PASS 3: Build result edges ===
   return assignments.map(a => {
     const { flow, idA, idB, handleIdxA, handleIdxB } = a
     const sourceHandle = flow.source_id === idA ? HANDLES[handleIdxA] : HANDLES[handleIdxB]
     const targetHandle = flow.target_id === idB ? HANDLES[handleIdxB] : HANDLES[handleIdxA]
+    const srcNode = nodeMap[flow.source_id]
+    const tgtNode = nodeMap[flow.target_id]
+    const srcC = srcNode ? nodeCenter(srcNode) : { x: 0, y: 0 }
+    const tgtC = tgtNode ? nodeCenter(tgtNode) : { x: 0, y: 0 }
     return {
       id: `flow-${flow.id}`,
       source: String(flow.source_id),
@@ -257,7 +294,14 @@ function dbFlowsToEdges(dbFlows, nodeMap) {
       sourceHandle,
       targetHandle,
       type: 'data_flow',
-      data: { label: flow.name, as_of: flow.as_of, srcHandle: sourceHandle, tgtHandle: targetHandle },
+      data: {
+        label: flow.name, as_of: flow.as_of, flowId: flow.id,
+        srcHandle: sourceHandle, tgtHandle: targetHandle,
+        flowTraits, traits,
+        label_dx: flow.label_dx || 0, label_dy: flow.label_dy || 0,
+        srcCenterX: srcC.x, srcCenterY: srcC.y,
+        tgtCenterX: tgtC.x, tgtCenterY: tgtC.y,
+      },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#00d4ff' },
     }
   })
@@ -271,7 +315,7 @@ export default function Canvas(props) {
   )
 }
 
-function CanvasInner({ db, diagramId, onNodePositionChange, onNavigateDiagram, onShowSpec }) {
+function CanvasInner({ db, diagramId, onNodePositionChange, onNavigateDiagram, onShowSpec, onShowDD, onShowEntity, onShowFlowDD, updateFlowLabelOffset }) {
   const filteredNodes = useMemo(
     () => (db.nodes || []).filter(n => n.diagram_id === diagramId),
     [db.nodes, diagramId]
@@ -288,7 +332,18 @@ function CanvasInner({ db, diagramId, onNodePositionChange, onNavigateDiagram, o
   }, [filteredNodes])
 
   const flowNodes = useMemo(() => dbNodesToFlow(filteredNodes), [filteredNodes])
-  const flowEdges = useMemo(() => dbFlowsToEdges(filteredFlows, nodeMap), [filteredFlows, nodeMap])
+  const flowTraits = db.flow_traits || []
+  const allTraits = db.traits || []
+  const flowEdgesBase = useMemo(() => dbFlowsToEdges(filteredFlows, nodeMap, flowTraits, allTraits), [filteredFlows, nodeMap, flowTraits, allTraits])
+
+  // Inject callbacks into edge data
+  const flowEdges = useMemo(() => {
+    if (!updateFlowLabelOffset && !onShowFlowDD) return flowEdgesBase
+    return flowEdgesBase.map(e => ({
+      ...e,
+      data: { ...e.data, updateFlowLabelOffset, onShowFlowDD },
+    }))
+  }, [flowEdgesBase, updateFlowLabelOffset, onShowFlowDD])
 
   const [nodes, setNodes, onNodesChange] = useNodesState(flowNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(flowEdges)
@@ -309,14 +364,19 @@ function CanvasInner({ db, diagramId, onNodePositionChange, onNavigateDiagram, o
   }, [onNodePositionChange])
 
   const onNodeDoubleClick = useCallback((_event, node) => {
-    if (node.type !== 'process') return
-    const childDiagramId = node.data?.child_diagram_id
-    if (childDiagramId) {
-      onNavigateDiagram?.(childDiagramId)
-    } else {
-      onShowSpec?.(Number(node.id))
+    if (node.type === 'process') {
+      const childDiagramId = node.data?.child_diagram_id
+      if (childDiagramId) {
+        onNavigateDiagram?.(childDiagramId)
+      } else {
+        onShowSpec?.(Number(node.id))
+      }
+    } else if (node.type === 'data_store') {
+      onShowDD?.(Number(node.id))
+    } else if (node.type === 'external_entity') {
+      onShowEntity?.(Number(node.id))
     }
-  }, [onNavigateDiagram, onShowSpec])
+  }, [onNavigateDiagram, onShowSpec, onShowDD, onShowEntity])
 
   return (
     <div style={{ width: '100%', height: '100%' }}>

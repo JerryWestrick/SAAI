@@ -3,6 +3,8 @@ import useStore from './hooks/useStore'
 import { computeLayout } from './hooks/useAutoLayout'
 import Canvas from './components/Canvas'
 import MiniSpecModal from './components/MiniSpecModal'
+import DataStoreModal from './components/DataStoreModal'
+import EntityActionsModal from './components/EntityActionsModal'
 
 const styles = {
   app: {
@@ -72,17 +74,31 @@ const styles = {
 }
 
 export default function App() {
-  const { db, connected, updateNodePosition, batchUpdateNodePositions } = useStore()
+  const { db, connected, updateNodePosition, updateFlowLabelOffset, batchUpdateNodePositions } = useStore()
+  const [projectId, setProjectId] = React.useState(null)
   const [diagramId, setDiagramId] = React.useState(null)
   const [history, setHistory] = React.useState([]) // breadcrumb stack of diagram IDs
   const [specNodeId, setSpecNodeId] = React.useState(null) // node ID for mini-spec modal
+  const [ddNodeId, setDdNodeId] = React.useState(null) // node ID for data store DD modal
+  const [entityNodeId, setEntityNodeId] = React.useState(null) // node ID for entity actions modal
+  const [ddFlowId, setDdFlowId] = React.useState(null) // flow ID for flow DD modal
 
-  const diagrams = db.diagrams || []
+  const projects = db.projects || []
+  const allDiagrams = db.diagrams || []
+  const diagrams = projectId ? allDiagrams.filter(d => d.project_id === projectId) : allDiagrams
 
-  // Auto-select first diagram
+  // Auto-select first project
   React.useEffect(() => {
-    if (diagramId === null && diagrams.length > 0) {
+    if (projectId === null && projects.length > 0) {
+      setProjectId(projects[0].id)
+    }
+  }, [projects, projectId])
+
+  // Auto-select first diagram when project changes
+  React.useEffect(() => {
+    if (diagrams.length > 0 && !diagrams.find(d => d.id === diagramId)) {
       setDiagramId(diagrams[0].id)
+      setHistory([])
     }
   }, [diagrams, diagramId])
 
@@ -114,6 +130,16 @@ export default function App() {
         <span style={styles.title}>SAAI</span>
         <select
           style={styles.select}
+          value={projectId || ''}
+          onChange={e => { setProjectId(Number(e.target.value)); setDiagramId(null); setHistory([]) }}
+        >
+          <option value="" disabled>Select project...</option>
+          {projects.map(p => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+        <select
+          style={styles.select}
           value={diagramId || ''}
           onChange={e => { setDiagramId(Number(e.target.value)); setHistory([]) }}
         >
@@ -136,7 +162,7 @@ export default function App() {
       </div>
       {diagramId ? (
         <div style={styles.canvas}>
-          <Canvas db={db} diagramId={diagramId} onNodePositionChange={updateNodePosition} onNavigateDiagram={navigateToDiagram} onShowSpec={setSpecNodeId} />
+          <Canvas db={db} diagramId={diagramId} onNodePositionChange={updateNodePosition} onNavigateDiagram={navigateToDiagram} onShowSpec={setSpecNodeId} onShowDD={setDdNodeId} onShowEntity={setEntityNodeId} onShowFlowDD={setDdFlowId} updateFlowLabelOffset={updateFlowLabelOffset} />
         </div>
       ) : (
         <div style={styles.empty}>
@@ -152,7 +178,46 @@ export default function App() {
             node={node}
             flows={flows}
             miniSpec={miniSpec}
+            flowTraits={db.flow_traits || []}
+            traits={db.traits || []}
+            db={db}
             onClose={() => setSpecNodeId(null)}
+          />
+        )
+      })()}
+      {ddNodeId != null && (() => {
+        const node = (db.nodes || []).find(n => n.id === ddNodeId)
+        return node ? (
+          <DataStoreModal
+            node={node}
+            db={db}
+            onClose={() => setDdNodeId(null)}
+          />
+        ) : null
+      })()}
+      {entityNodeId != null && (() => {
+        const node = (db.nodes || []).find(n => n.id === entityNodeId)
+        const flows = (db.data_flows || []).filter(f => f.diagram_id === diagramId)
+        const nodeMap = {}
+        for (const n of (db.nodes || []).filter(n => n.diagram_id === diagramId)) nodeMap[n.id] = n
+        return node ? (
+          <EntityActionsModal
+            node={node}
+            flows={flows}
+            nodeMap={nodeMap}
+            onClose={() => setEntityNodeId(null)}
+          />
+        ) : null
+      })()}
+      {ddFlowId != null && (() => {
+        const flow = (db.data_flows || []).find(f => f.id === ddFlowId)
+        if (!flow) return null
+        // Pass flow as a pseudo-node (DataStoreModal uses name + diagram_id)
+        return (
+          <DataStoreModal
+            node={{ name: flow.name, diagram_id: flow.diagram_id }}
+            db={db}
+            onClose={() => setDdFlowId(null)}
           />
         )
       })()}

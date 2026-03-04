@@ -17,5 +17,8 @@ frontend/dist/
 # Claude Code
 .claude/
 
+# Test systems (cloned repos for requirement analysis)
+test-systems/
+
 # Runtime data
 prompts/chats.db

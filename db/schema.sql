@@ -64,3 +64,33 @@ CREATE TABLE mini_specs (
     spec_text TEXT NOT NULL,
     prompt_file TEXT
 );
+
+-- Structured fields for data dictionary entries
+CREATE TABLE dd_fields (
+    id SERIAL PRIMARY KEY,
+    dd_id INTEGER NOT NULL REFERENCES data_dictionary(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    field_type TEXT NOT NULL DEFAULT 'text',  -- text, integer, float, boolean, date, reference
+    reference_dd TEXT,  -- if field_type='reference', name of referenced DD entry
+    description TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+-- Project-level trait definitions
+CREATE TABLE traits (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT,
+    can_go_stale BOOLEAN NOT NULL DEFAULT false,
+    UNIQUE(project_id, name)
+);
+
+-- Traits on data flows (requires/adds/removes)
+CREATE TABLE flow_traits (
+    id SERIAL PRIMARY KEY,
+    flow_id INTEGER NOT NULL REFERENCES data_flows(id) ON DELETE CASCADE,
+    trait_id INTEGER NOT NULL REFERENCES traits(id) ON DELETE CASCADE,
+    modifier TEXT NOT NULL CHECK (modifier IN ('requires', 'adds', 'removes')),
+    UNIQUE(flow_id, trait_id, modifier)
+);

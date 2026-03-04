@@ -197,6 +197,140 @@ def dd_list(project_id):
         click.echo(f"  {row['name']} {row['definition']}")
 
 
+# --- Trait commands ---
+
+@saai.group()
+def trait():
+    """Manage project traits"""
+    pass
+
+
+@trait.command("add")
+@click.option("--project", "-p", "project_id", required=True, type=int, help="Project ID")
+@click.argument("name")
+@click.option("--description", "-d", default=None, help="Trait description")
+@click.option("--stale", is_flag=True, default=False, help="Can this trait go stale?")
+def trait_add(project_id, name, description, stale):
+    """Add a trait to a project"""
+    row = execute(
+        "INSERT INTO traits (project_id, name, description, can_go_stale) "
+        "VALUES (%s, %s, %s, %s) RETURNING *",
+        (project_id, name, description, stale),
+    )
+    click.echo(json.dumps(row, indent=2, default=str))
+
+
+@trait.command("list")
+@click.option("--project", "-p", "project_id", type=int, default=None, help="Filter by project")
+def trait_list(project_id):
+    """List traits"""
+    if project_id:
+        rows = query("SELECT * FROM traits WHERE project_id = %s ORDER BY id", (project_id,))
+    else:
+        rows = query("SELECT * FROM traits ORDER BY id")
+    for row in rows:
+        stale = " (can go stale)" if row['can_go_stale'] else ""
+        click.echo(f"  {row['id']}: {row['name']}{stale}")
+        if row['description']:
+            click.echo(f"      {row['description']}")
+
+
+# --- DD Field commands ---
+
+@saai.group()
+def field():
+    """Manage data dictionary fields"""
+    pass
+
+
+@field.command("add")
+@click.option("--dd", "dd_id", required=True, type=int, help="Data dictionary entry ID")
+@click.argument("name")
+@click.option("--type", "-t", "field_type", default="text",
+              type=click.Choice(["text", "integer", "float", "boolean", "date", "reference"]),
+              help="Field type")
+@click.option("--ref", "reference_dd", default=None, help="Referenced DD entry name (for reference type)")
+@click.option("--description", "-d", default=None, help="Field description")
+@click.option("--sort", "sort_order", type=int, default=0, help="Sort order")
+def field_add(dd_id, name, field_type, reference_dd, description, sort_order):
+    """Add a field to a data dictionary entry"""
+    row = execute(
+        "INSERT INTO dd_fields (dd_id, name, field_type, reference_dd, description, sort_order) "
+        "VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
+        (dd_id, name, field_type, reference_dd, description, sort_order),
+    )
+    click.echo(json.dumps(row, indent=2, default=str))
+
+
+@field.command("list")
+@click.option("--dd", "dd_id", type=int, default=None, help="Filter by DD entry ID")
+def field_list(dd_id):
+    """List data dictionary fields"""
+    if dd_id:
+        rows = query(
+            "SELECT f.*, d.name as dd_name FROM dd_fields f "
+            "JOIN data_dictionary d ON f.dd_id = d.id "
+            "WHERE f.dd_id = %s ORDER BY f.sort_order", (dd_id,))
+    else:
+        rows = query(
+            "SELECT f.*, d.name as dd_name FROM dd_fields f "
+            "JOIN data_dictionary d ON f.dd_id = d.id "
+            "ORDER BY d.name, f.sort_order")
+    current_dd = None
+    for row in rows:
+        if row['dd_name'] != current_dd:
+            current_dd = row['dd_name']
+            click.echo(f"\n  {current_dd}:")
+        ref = f" -> {row['reference_dd']}" if row['reference_dd'] else ""
+        desc = f" — {row['description']}" if row['description'] else ""
+        click.echo(f"    {row['name']} ({row['field_type']}{ref}){desc}")
+
+
+# --- Flow Trait commands ---
+
+@saai.group(name="flow-trait")
+def flow_trait():
+    """Manage traits on data flows"""
+    pass
+
+
+@flow_trait.command("add")
+@click.option("--flow", "-f", "flow_id", required=True, type=int, help="Data flow ID")
+@click.option("--trait", "-t", "trait_id", required=True, type=int, help="Trait ID")
+@click.option("--modifier", "-m", required=True,
+              type=click.Choice(["requires", "adds", "removes"]), help="Trait modifier")
+def flow_trait_add(flow_id, trait_id, modifier):
+    """Add a trait annotation to a data flow"""
+    row = execute(
+        "INSERT INTO flow_traits (flow_id, trait_id, modifier) "
+        "VALUES (%s, %s, %s) RETURNING *",
+        (flow_id, trait_id, modifier),
+    )
+    click.echo(json.dumps(row, indent=2, default=str))
+
+
+@flow_trait.command("list")
+@click.option("--flow", "-f", "flow_id", type=int, default=None, help="Filter by flow ID")
+def flow_trait_list(flow_id):
+    """List flow trait annotations"""
+    if flow_id:
+        rows = query(
+            "SELECT ft.*, t.name as trait_name, df.name as flow_name "
+            "FROM flow_traits ft "
+            "JOIN traits t ON ft.trait_id = t.id "
+            "JOIN data_flows df ON ft.flow_id = df.id "
+            "WHERE ft.flow_id = %s ORDER BY ft.id", (flow_id,))
+    else:
+        rows = query(
+            "SELECT ft.*, t.name as trait_name, df.name as flow_name "
+            "FROM flow_traits ft "
+            "JOIN traits t ON ft.trait_id = t.id "
+            "JOIN data_flows df ON ft.flow_id = df.id "
+            "ORDER BY ft.flow_id, ft.id")
+    for row in rows:
+        click.echo(f"  {row['flow_name']}: {row['modifier']} {row['trait_name']}")
+
+
 # --- Mini Spec commands ---
 
 @saai.group()
